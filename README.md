@@ -44,7 +44,7 @@ npm run build
 | --- | --- | --- | --- |
 | 航班保障 | `flight` | 航班保障任务 | 保障编号、航班号、机型 |
 | 机位分配 | `stand` | 停机位 | 机位编号、机位类型、适用机型 |
-| 廊桥靠接 | `bridge` | 廊桥作业 | 作业编号、廊桥编号、对应机位 |
+| 廊桥靠接 | `bridge` | 廊桥作业 | 作业编号、航班号、机型 |
 | 摆渡车调度 | `shuttle` | 摆渡车 | 车辆编号、核载人数、驾驶员 |
 | 行李装卸 | `baggage` | 行李作业 | 作业编号、航班号、行李件数 |
 | 机务勤务 | `line` | 勤务任务 | 任务编号、航班号、勤务项目 |
@@ -68,4 +68,10 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
-- 想回到初始数据：清掉浏览器里 `airport-ground-ops:entries` 这一项，或调用 `resetModule(模块)`。
+- 廊桥靠接另有一层作业许可（`frontend/src/api/bridge-permit.ts`，由 `local-service.ts` 转出）：
+  先按机位与机型核限制条件签发许可，同一机位同一时段只办一条（撞时段先申请先上）；
+  对接检查项逐项落库、断点续做，全部通过才能靠桥；状态只许 待靠接→已靠桥→已撤离 顺序推进，
+  已撤离不许退回；许可与检查结论同步到机位占用台账，台账以许可为准。
+- 许可层规则有单元测试：`cd frontend && npm test`。
+- 想回到初始数据：清掉浏览器里 `airport-ground-ops:entries` 与 `airport-ground-ops:bridge-permits`
+  这两项，或调用 `resetModule(模块)`。

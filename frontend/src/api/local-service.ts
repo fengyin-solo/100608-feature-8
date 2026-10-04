@@ -1,6 +1,18 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+import { resetBridgePermits, runBridgeAction, syncStandLedger } from './bridge-permit'
+
+// 廊桥靠接的许可层接口也从这里出，页面仍然只跟 local-service 打交道
+export {
+  applyBridgePermit,
+  checkProgress,
+  listPermits,
+  passBridgeCheck,
+  permitOfRow,
+  suggestPermitNo,
+} from './bridge-permit'
+export type { BridgePermit, PermitApplication } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -24,12 +36,20 @@ export function filterRows(rows: EntryRow[], filters: Record<string, string>): E
 }
 
 export function listEntries(key: string, filters: Record<string, string> = {}): PageResult {
+  if (key === 'stand') {
+    // 机位占用台账以廊桥许可为准：读之前先对齐，当前航班不各算各的
+    syncStandLedger()
+  }
   const matched = filterRows(listRows(key), filters)
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
 export function runAction(key: string, id: number, action: string): ActionResult {
   const meta = moduleMeta(key)
+  if (key === 'bridge') {
+    // 廊桥靠接走许可层：有序状态机 + 检查项门禁，不能裸改状态
+    return runBridgeAction(id, action)
+  }
   const target = meta.actionTargets[action]
   if (!target) {
     return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
@@ -58,6 +78,11 @@ export function runAction(key: string, id: number, action: string): ActionResult
 
 export function resetModule(key: string): PageResult {
   resetRows(key)
+  if (key === 'bridge') {
+    // 许可与台账行一起回到初始数据，再把机位占用台账对齐
+    resetBridgePermits()
+    syncStandLedger()
+  }
   return listEntries(key)
 }
 
