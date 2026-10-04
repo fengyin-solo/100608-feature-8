@@ -82,7 +82,7 @@ import {
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('stand')
-const columns = ["机位编号", "机位类型", "适用机型", "廊桥配置", "近远机位", "占用时段", "当前航班", "机位状态"]
+const columns = ["机位编号", "机位类型", "适用机型", "廊桥配置", "近远机位", "占用时段", "当前航班", "廊桥许可", "检查结论", "机位状态"]
 const actions = ["分配机位", "释放机位", "封闭机位"]
 const statuses = ["空闲", "占用中", "维护中", "已封闭"]
 const stats = [{"label": "可用机位", "value": 0}, {"label": "占用中机位", "value": 0}, {"label": "封闭机位", "value": 0}]

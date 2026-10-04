@@ -1,5 +1,12 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import {
+  confirmDeparture,
+  listBridgeRows,
+  resetBridgeJobs,
+  standBlockedReason,
+  submitPermit,
+} from './bridge-service'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -24,11 +31,26 @@ export function filterRows(rows: EntryRow[], filters: Record<string, string>): E
 }
 
 export function listEntries(key: string, filters: Record<string, string> = {}): PageResult {
+  // 廊桥作业的唯一数据源是作业许可领域层，台账与列表都从许可结论投影，不允许各算各的。
+  if (key === 'bridge') {
+    const matched = filterRows(listBridgeRows(), filters)
+    return { items: matched, total: matched.length, page: 1, size: matched.length }
+  }
   const matched = filterRows(listRows(key), filters)
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
 export function runAction(key: string, id: number, action: string): ActionResult {
+  // 廊桥靠接走作业许可：动作委派给许可服务，顺序状态机、检查项、机位同步都在那边收口。
+  if (key === 'bridge') {
+    if (action === '开始靠接' || action === '提交许可') {
+      return submitPermit(id)
+    }
+    if (action === '确认撤离') {
+      return confirmDeparture(id)
+    }
+    return { ok: false, message: `廊桥作业只允许「提交许可 / 确认撤离」，状态按 待靠接→已靠桥→已撤离 推进` }
+  }
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
@@ -38,6 +60,14 @@ export function runAction(key: string, id: number, action: string): ActionResult
   const index = rows.findIndex((row) => Number(row.id) === id)
   if (index < 0) {
     return { ok: false, message: `没有找到编号为 ${id} 的${meta.entity}` }
+  }
+  // 机位台账不能绕过廊桥许可直接改：在办廊桥作业期间，分配/释放/封闭一律挡回。
+  if (key === 'stand') {
+    const standNo = String(rows[index]['机位编号'] ?? '')
+    const blocked = standBlockedReason(standNo)
+    if (blocked) {
+      return { ok: false, message: blocked }
+    }
   }
   const current = String(rows[index].status)
   if (current === target) {
@@ -57,7 +87,11 @@ export function runAction(key: string, id: number, action: string): ActionResult
 }
 
 export function resetModule(key: string): PageResult {
-  resetRows(key)
+  if (key === 'bridge') {
+    resetBridgeJobs()
+  } else {
+    resetRows(key)
+  }
   return listEntries(key)
 }
 
@@ -65,7 +99,9 @@ export function exportEntries(key: string): { filename: string; content: string 
   const meta = moduleMeta(key)
   const header = ['编号', ...meta.fields, '当前状态']
   const lines = [header.join(',')]
-  for (const row of listRows(key)) {
+  // 廊桥导出走许可投影，导出的字段与页面看到的许可结论一致。
+  const source = key === 'bridge' ? listBridgeRows() : listRows(key)
+  for (const row of source) {
     lines.push([row.id, ...meta.fields.map((field) => row[field] ?? ''), row.status].join(','))
   }
   return { filename: `${meta.name}-清单.csv`, content: `\uFEFF${lines.join('\n')}` }
@@ -87,7 +123,7 @@ export function downloadEntries(key: string): void {
 export function loadOverview(): OverviewResult {
   const rows = allRows()
   const modules = [...MODULE_BY_KEY.values()].map((meta) => {
-    const entries = rows[meta.key] ?? []
+    const entries = meta.key === 'bridge' ? listBridgeRows() : (rows[meta.key] ?? [])
     return {
       name: meta.name,
       created: entries.length,
